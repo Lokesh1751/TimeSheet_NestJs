@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { 
+  Injectable, 
+  NotFoundException, 
+  HttpException, 
+  HttpStatus 
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Timesheet, TimesheetDay } from './timesheet.entity';
 import { Repository } from 'typeorm';
@@ -51,7 +56,13 @@ export class TimesheetService {
       });
     }
 
-    return this.timesheetRepo.save(timesheet);
+    await this.timesheetRepo.save(timesheet);
+
+    return {
+      statusCode: HttpStatus.CREATED,
+      message: 'Timesheet added successfully',
+      data: timesheet,
+    };
   }
 
   async getAllTimesheets() {
@@ -59,69 +70,44 @@ export class TimesheetService {
       relations: ['days'],
     });
 
-    const timesheetMap = new Map();
+    if (!timesheets.length) {
+      throw new HttpException(
+        { statusCode: HttpStatus.NOT_FOUND, message: 'No timesheets found' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
 
-    timesheets.forEach(timesheet => {
-      const { year, total_vacation_leaves, total_sick_leaves, total_working_hours, days } = timesheet;
-
-      if (!timesheetMap.has(year)) {
-        timesheetMap.set(year, {
-          year,
-          total_vacation: 0,
-          total_sick: 0,
-          total_working_hours: 0,
-          months: {}
-        });
-      }
-
-      const yearData = timesheetMap.get(year);
-      yearData.total_vacation += total_vacation_leaves;
-      yearData.total_sick += total_sick_leaves;
-      yearData.total_working_hours += total_working_hours;
-
-      days.forEach(day => {
-        const month = new Date(day.date).toLocaleString('default', { month: 'long' });
-
-        if (!yearData.months[month]) {
-          yearData.months[month] = {
-            total_vacation_leaves: 0,
-            total_sick_leaves: 0,
-            total_working_hours: 0,
-            days: []
-          };
-        }
-
-        if (day.date_type === 'vacation') yearData.months[month].total_vacation_leaves++;
-        if (day.date_type === 'sick') yearData.months[month].total_sick_leaves++;
-        if (day.date_type === 'working') yearData.months[month].total_working_hours += day.working_hour;
-
-        yearData.months[month].days.push({
-          date: day.date,
-          day_type: day.date_type,
-          working_hour: day.working_hour
-        });
-      });
-    });
-
-    return Array.from(timesheetMap.values());
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Timesheets retrieved successfully',
+      data: timesheets,
+    };
   }
 
-  async updateTimesheetDay(date: string, updateData: {date:string, date_type?: string; working_hour?: number }) {
+  async updateTimesheetDay(date: string, updateData: { date: string; date_type?: string; working_hour?: number }) {
     const day = await this.timesheetDayRepo.findOne({ where: { date }, relations: ['timesheet'] });
 
     if (!day) {
-      throw new NotFoundException(`Timesheet entry for date ${date} not found`);
+      throw new HttpException(
+        { statusCode: HttpStatus.NOT_FOUND, message: `Timesheet entry for date ${date} not found` },
+        HttpStatus.NOT_FOUND,
+      );
     }
 
     const timesheet = day.timesheet;
     if (!timesheet) {
-      throw new NotFoundException(`Timesheet not found for the given day`);
+      throw new HttpException(
+        { statusCode: HttpStatus.NOT_FOUND, message: 'Timesheet not found for the given day' },
+        HttpStatus.NOT_FOUND,
+      );
     }
 
+    // Adjust previous values
     if (day.date_type === 'working') timesheet.total_working_hours -= day.working_hour;
     if (day.date_type === 'vacation') timesheet.total_vacation_leaves--;
     if (day.date_type === 'sick') timesheet.total_sick_leaves--;
 
+    // Update new values
     if (updateData.date_type) day.date_type = updateData.date_type;
     if (updateData.working_hour !== undefined) day.working_hour = updateData.working_hour;
 
@@ -130,33 +116,47 @@ export class TimesheetService {
     if (day.date_type === 'sick') timesheet.total_sick_leaves++;
 
     await this.timesheetDayRepo.save(day);
-    return this.timesheetRepo.save(timesheet);
+    await this.timesheetRepo.save(timesheet);
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: `Timesheet entry for ${date} updated successfully`,
+      data: day,
+    };
   }
 
   async bulkUpdateTimesheetDays(updates: { date: string; date_type?: string; working_hour?: number }[]) {
-    const updatedDays : TimesheetDay[] = [];
+    const updatedDays: TimesheetDay[] = [];
     const timesheetUpdates = new Map<number, Timesheet>();
 
     for (const updateData of updates) {
       const day = await this.timesheetDayRepo.findOne({ where: { date: updateData.date }, relations: ['timesheet'] });
 
       if (!day) {
-        throw new NotFoundException(`Timesheet entry for date ${updateData.date} not found`);
+        throw new HttpException(
+          { statusCode: HttpStatus.NOT_FOUND, message: `Timesheet entry for date ${updateData.date} not found` },
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       const timesheet = day.timesheet;
       if (!timesheet) {
-        throw new NotFoundException(`Timesheet not found for the given day`);
+        throw new HttpException(
+          { statusCode: HttpStatus.NOT_FOUND, message: 'Timesheet not found for the given day' },
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       if (!timesheetUpdates.has(timesheet.id)) {
         timesheetUpdates.set(timesheet.id, timesheet);
       }
 
+      // Adjust previous values
       if (day.date_type === 'working') timesheet.total_working_hours -= day.working_hour;
       if (day.date_type === 'vacation') timesheet.total_vacation_leaves--;
       if (day.date_type === 'sick') timesheet.total_sick_leaves--;
 
+      // Update new values
       if (updateData.date_type) day.date_type = updateData.date_type;
       if (updateData.working_hour !== undefined) day.working_hour = updateData.working_hour;
 
@@ -170,6 +170,10 @@ export class TimesheetService {
     await this.timesheetDayRepo.save(updatedDays);
     await this.timesheetRepo.save(Array.from(timesheetUpdates.values()));
 
-    return { message: 'Timesheet days updated successfully' };
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Timesheet days updated successfully',
+      updatedEntries: updatedDays.length,
+    };
   }
 }
