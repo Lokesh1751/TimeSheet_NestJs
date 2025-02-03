@@ -1,5 +1,5 @@
 import { EntityRepository, Repository } from 'typeorm';
-import { Timesheet } from './timesheet.entity';
+import { TimesheetDay } from './timesheet.entity';
 
-@EntityRepository(Timesheet)
-export class TimesheetRepository extends Repository<Timesheet> {}
+@EntityRepository(TimesheetDay)
+export class TimesheetRepository extends Repository<TimesheetDay> {}

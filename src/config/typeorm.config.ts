@@ -1,5 +1,5 @@
 import { TypeOrmModuleOptions } from "@nestjs/typeorm";
-import { Timesheet, TimesheetDay } from "modules/timesheet/timesheet.entity";
+import {TimesheetDay } from "modules/timesheet/timesheet.entity";
 
 export const typeOrmConfig: TypeOrmModuleOptions = {
     type: 'postgres',
@@ -8,6 +8,6 @@ export const typeOrmConfig: TypeOrmModuleOptions = {
     username: 'postgres',
     password: 'Sujalangi12@#',
     database: 'quiz',
-    entities: [Timesheet,TimesheetDay],
+    entities: [TimesheetDay],
     synchronize: true,
 }

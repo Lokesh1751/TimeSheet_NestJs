@@ -5,101 +5,82 @@ import {
   HttpStatus 
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Timesheet, TimesheetDay } from './timesheet.entity';
+import { TimesheetDay } from './timesheet.entity';
 import { Repository } from 'typeorm';
 
 @Injectable()
 export class TimesheetService {
   constructor(
-    @InjectRepository(Timesheet)
-    private readonly timesheetRepo: Repository<Timesheet>,
     @InjectRepository(TimesheetDay)
     private readonly timesheetDayRepo: Repository<TimesheetDay>,
   ) {}
 
   async addTimesheet(data: { year: number; days: any[] }) {
     const { year, days } = data;
-
-    let timesheet = await this.timesheetRepo.findOne({
-      where: { year },
-      relations: ['days'],
-    });
-
+  
+    // Log the incoming data for debugging
+    console.log('Received data:', data);
+  
+    // Check if days is an array
+    if (!Array.isArray(days)) {
+      throw new HttpException('Days must be an array', HttpStatus.BAD_REQUEST);
+    }
+  
     let totalVacation = 0;
     let totalSick = 0;
     let totalWorkingHours = 0;
-
+  
     const timesheetDays = days.map((day) => {
       if (day.date_type === 'vacation') totalVacation++;
       if (day.date_type === 'sick') totalSick++;
       if (day.date_type === 'working') totalWorkingHours += day.working_hour;
-
+  
       return this.timesheetDayRepo.create({
         date: day.date,
+        year,
         date_type: day.date_type,
         working_hour: day.working_hour,
       });
     });
-
-    if (timesheet) {
-      timesheet.total_vacation_leaves += totalVacation;
-      timesheet.total_sick_leaves += totalSick;
-      timesheet.total_working_hours += totalWorkingHours;
-      timesheet.days.push(...timesheetDays);
-    } else {
-      timesheet = this.timesheetRepo.create({
+  
+    await this.timesheetDayRepo.save(timesheetDays);
+  
+    return {
+      statusCode: HttpStatus.CREATED,
+      message: 'Timesheet added successfully',
+      data: {
         year,
         total_vacation_leaves: totalVacation,
         total_sick_leaves: totalSick,
         total_working_hours: totalWorkingHours,
         days: timesheetDays,
-      });
-    }
-
-    await this.timesheetRepo.save(timesheet);
-
-    return {
-      statusCode: HttpStatus.CREATED,
-      message: 'Timesheet added successfully',
-      data: timesheet,
+      },
     };
   }
 
   async getAllTimesheets() {
-    const timesheets = await this.timesheetRepo.find({
-      relations: ['days'],
-    });
+    const timesheetDays = await this.timesheetDayRepo.find();
 
-    return timesheets.map(timesheet => {
-      const totalVacation = timesheet.total_vacation_leaves;
-      const totalSick = timesheet.total_sick_leaves;
-      const totalWorkingHours = this.calculateTotalWorkingHours(timesheet.days);
-      
-      // Group days by month
-      const groupedDays = this.groupDaysByMonth(timesheet.days);
+    const groupedByYear = timesheetDays.reduce((acc, day) => {
+      if (!acc[day.year]) {
+        acc[day.year] = {
+          year: day.year,
+          total_vacation_leaves: 0,
+          total_sick_leaves: 0,
+          total_working_hours: 0,
+          months: {}, // Initialize months object
+        };
+      }
 
-      return {
-        statusCode: HttpStatus.OK,
-        message: 'Timesheet fetched successfully',
-        data: {
-          id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
-          year: timesheet.year,
-          total_vacation_leaves: totalVacation,
-          total_sick_leaves: totalSick,
-          total_working_hours: totalWorkingHours,
-          days: groupedDays,
-        },
-      };
-    });
-  }
+      // Update totals
+      if (day.date_type === 'vacation') acc[day.year].total_vacation_leaves++;
+      if (day.date_type === 'sick') acc[day.year].total_sick_leaves++;
+      if (day.date_type === 'working') acc[day.year].total_working_hours += day.working_hour;
 
-  private groupDaysByMonth(days: TimesheetDay[]) {
-    const months = {};
-
-    days.forEach(day => {
+      // Group by month
       const month = new Date(day.date).toLocaleString('default', { month: 'long' });
-      if (!months[month]) {
-        months[month] = {
+      if (!acc[day.year].months[month]) {
+        acc[day.year].months[month] = {
           total_vacation_leaves: 0,
           total_sick_leaves: 0,
           total_working_hours: 0,
@@ -107,38 +88,75 @@ export class TimesheetService {
         };
       }
 
-      // Increment totals based on the day type
-      if (day.date_type === 'working') {
-        months[month].total_working_hours += day.working_hour;
-      } else if (day.date_type === 'vacation') {
-        months[month].total_vacation_leaves++;
-      } else if (day.date_type === 'sick') {
-        months[month].total_sick_leaves++;
-      }
+      // Update monthly totals
+      if (day.date_type === 'vacation') acc[day.year].months[month].total_vacation_leaves++;
+      if (day.date_type === 'sick') acc[day.year].months[month].total_sick_leaves++;
+      if (day.date_type === 'working') acc[day.year].months[month].total_working_hours += day.working_hour;
 
-      // Add the day to the corresponding month
-      months[month].days.push({
-        id: day.id, // Assuming you have an ID field in your TimesheetDay entity
-        date: day.date,
-        date_type: day.date_type,
-        working_hour: day.working_hour,
-      });
-    });
+      // Add the day to the respective month
+      acc[day.year].months[month].days.push(day);
 
-    return months;
+      return acc;
+    }, {});
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Timesheets fetched successfully',
+      data: Object.values(groupedByYear),
+    };
   }
 
-  private calculateTotalWorkingHours(days: TimesheetDay[]) {
-    return days.reduce((total, day) => {
-      if (day.date_type === 'working') {
-        return total + day.working_hour;
-      }
-      return total;
+  async getTimesheetByYear(year: number) {
+    const timesheetDays = await this.timesheetDayRepo.find({ where: { year } });
+
+    if (!timesheetDays.length) {
+      throw new NotFoundException(`Timesheet for year ${year} not found`);
+    }
+
+    const totalVacation = timesheetDays.filter(day => day.date_type === 'vacation').length;
+    const totalSick = timesheetDays.filter(day => day.date_type === 'sick').length;
+    const totalWorkingHours = timesheetDays.reduce((total, day) => {
+      return total + (day.date_type === 'working' ? day.working_hour : 0);
     }, 0);
+
+    // Group by month
+    const groupedByMonth = timesheetDays.reduce((acc, day) => {
+      const month = new Date(day.date).toLocaleString('default', { month: 'long' });
+      if (!acc[month]) {
+        acc[month] = {
+          total_vacation_leaves: 0,
+          total_sick_leaves: 0,
+          total_working_hours: 0,
+          days: [],
+        };
+      }
+
+      // Update monthly totals
+      if (day.date_type === 'vacation') acc[month].total_vacation_leaves++;
+      if (day.date_type === 'sick') acc[month].total_sick_leaves++;
+      if (day.date_type === 'working') acc[month].total_working_hours += day.working_hour;
+
+      // Add the day to the respective month
+      acc[month].days.push(day);
+
+      return acc;
+    }, {});
+
+    return {
+      statusCode: HttpStatus.OK,
+      message: `Timesheet for year ${year} fetched successfully`,
+      data: {
+        year,
+        total_vacation_leaves: totalVacation,
+        total_sick_leaves: totalSick,
+        total_working_hours: totalWorkingHours,
+        months: groupedByMonth,
+      },
+    };
   }
 
-  async updateTimesheetDay(date: string, updateData: { date: string; date_type?: string; working_hour?: number }) {
-    const day = await this.timesheetDayRepo.findOne({ where: { date }, relations: ['timesheet'] });
+  async updateTimesheetDay(date: string, updateData: { date_type?: string; working_hour?: number }) {
+    const day = await this.timesheetDayRepo.findOne({ where: { date } });
 
     if (!day) {
       throw new HttpException(
@@ -147,29 +165,16 @@ export class TimesheetService {
       );
     }
 
-    const timesheet = day.timesheet;
-    if (!timesheet) {
-      throw new HttpException(
-        { statusCode: HttpStatus.NOT_FOUND, message: 'Timesheet not found for the given day' },
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
     // Adjust previous values
-    if (day.date_type === 'working') timesheet.total_working_hours -= day.working_hour;
-    if (day.date_type === 'vacation') timesheet.total_vacation_leaves--;
-    if (day.date_type === 'sick') timesheet.total_sick_leaves--;
+    if (day.date_type === 'working') day.working_hour -= day.working_hour;
+    if (day.date_type === 'vacation') day.date_type = 'vacation';
+    if (day.date_type === 'sick') day.date_type = 'sick';
 
     // Update new values
     if (updateData.date_type) day.date_type = updateData.date_type;
     if (updateData.working_hour !== undefined) day.working_hour = updateData.working_hour;
 
-    if (day.date_type === 'working') timesheet.total_working_hours += day.working_hour;
-    if (day.date_type === 'vacation') timesheet.total_vacation_leaves++;
-    if (day.date_type === 'sick') timesheet.total_sick_leaves++;
-
     await this.timesheetDayRepo.save(day);
-    await this.timesheetRepo.save(timesheet);
 
     return {
       statusCode: HttpStatus.OK,
@@ -180,10 +185,9 @@ export class TimesheetService {
 
   async bulkUpdateTimesheetDays(updates: { date: string; date_type?: string; working_hour?: number }[]) {
     const updatedDays: TimesheetDay[] = [];
-    const timesheetUpdates = new Map<number, Timesheet>();
 
     for (const updateData of updates) {
-      const day = await this.timesheetDayRepo.findOne({ where: { date: updateData.date }, relations: ['timesheet'] });
+      const day = await this.timesheetDayRepo.findOne({ where: { date: updateData.date } });
 
       if (!day) {
         throw new HttpException(
@@ -192,72 +196,24 @@ export class TimesheetService {
         );
       }
 
-      const timesheet = day.timesheet;
-      if (!timesheet) {
-        throw new HttpException(
-          { statusCode: HttpStatus.NOT_FOUND, message: 'Timesheet not found for the given day' },
-          HttpStatus.NOT_FOUND,
-        );
-      }
-
-      if (!timesheetUpdates.has(timesheet.id)) {
-        timesheetUpdates.set(timesheet.id, timesheet);
-      }
-
       // Adjust previous values
-      if (day.date_type === 'working') timesheet.total_working_hours -= day.working_hour;
-      if (day.date_type === 'vacation') timesheet.total_vacation_leaves--;
-      if (day.date_type === 'sick') timesheet.total_sick_leaves--;
+      if (day.date_type === 'working') day.working_hour -= day.working_hour;
+      if (day.date_type === 'vacation') day.date_type = 'vacation';
+      if (day.date_type === 'sick') day.date_type = 'sick';
 
       // Update new values
       if (updateData.date_type) day.date_type = updateData.date_type;
       if (updateData.working_hour !== undefined) day.working_hour = updateData.working_hour;
 
-      if (day.date_type === 'working') timesheet.total_working_hours += day.working_hour;
-      if (day.date_type === 'vacation') timesheet.total_vacation_leaves++;
-      if (day.date_type === 'sick') timesheet.total_sick_leaves++;
-
       updatedDays.push(day);
     }
 
     await this.timesheetDayRepo.save(updatedDays);
-    await this.timesheetRepo.save(Array.from(timesheetUpdates.values()));
 
     return {
       statusCode: HttpStatus.OK,
       message: 'Timesheet days updated successfully',
       updatedEntries: updatedDays.length,
-    };
-  }
-
-  async getTimesheetByYear(year: number) {
-    const timesheet = await this.timesheetRepo.findOne({
-      where: { year },
-      relations: ['days'],
-    });
-
-    if (!timesheet) {
-      throw new NotFoundException(`Timesheet for year ${year} not found`);
-    }
-
-    const totalVacation = timesheet.total_vacation_leaves;
-    const totalSick = timesheet.total_sick_leaves;
-    const totalWorkingHours = this.calculateTotalWorkingHours(timesheet.days);
-    
-    // Group days by month
-    const groupedDays = this.groupDaysByMonth(timesheet.days);
-
-    return {
-      statusCode: HttpStatus.OK,
-      message: `Timesheet for year ${year} fetched successfully`,
-      data: {
-        id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
-        year: timesheet.year,
-        total_vacation_leaves: totalVacation,
-        total_sick_leaves: totalSick,
-        total_working_hours: totalWorkingHours,
-        days: groupedDays,
-      },
     };
   }
 }

@@ -10,7 +10,7 @@ import {
 import { TimesheetService } from './timesheet.service';
 import { CreateTimesheetDto } from './create-timesheet-dto';
 import { UpdateTimesheetEntryDto } from './update-timesheet-dto';
-import { BulkUpdateTimesheetDto } from './update-bulk-dto'
+import { BulkUpdateTimesheetDto } from './update-bulk-dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
 
 @ApiTags('Timesheet')
@@ -40,12 +40,12 @@ export class TimesheetController {
     return this.timesheetService.addTimesheet(data);
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Get all timesheets' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'List of all timesheets retrieved successfully' })
-  async getAllTimesheets() {
-    return this.timesheetService.getAllTimesheets();
-  }
+  // @Get()
+  // @ApiOperation({ summary: 'Get all timesheets' })
+  // @ApiResponse({ status: HttpStatus.OK, description: 'List of all timesheets retrieved successfully' })
+  // async getAllTimesheets() {
+  //   return this.timesheetService.getAllTimesheets();
+  // }
 
   @Get(':year')
   @ApiOperation({ summary: 'Get timesheet for a specific year' })
@@ -56,29 +56,29 @@ export class TimesheetController {
     return this.timesheetService.getTimesheetByYear(year);
   }
 
-  @Put('/day/:date')
-  @ApiOperation({ summary: 'Update a specific timesheet day' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Timesheet day updated successfully' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Timesheet entry for given date not found' })
-  @ApiBody({
-    type: UpdateTimesheetEntryDto,
-    examples: {
-      example1: {
-        summary: 'Update a timesheet day',
-        value: {
-          date_type: 'sick',
-          working_hour: 0
-        }
-      }
-    }
-  })
-  @ApiParam({ name: 'date', example: '2024-01-01', description: 'Date of the timesheet entry to update' })
-  async updateTimesheetDay(
-    @Param('date') date: string,
-    @Body() updateData: UpdateTimesheetEntryDto,
-  ) {
-    return this.timesheetService.updateTimesheetDay(date, updateData);
-  }
+  // @Put('/day/:date')
+  // @ApiOperation({ summary: 'Update a specific timesheet day' })
+  // @ApiResponse({ status: HttpStatus.OK, description: 'Timesheet day updated successfully' })
+  // @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Timesheet entry for given date not found' })
+  // @ApiBody({
+  //   type: UpdateTimesheetEntryDto,
+  //   examples: {
+  //     example1: {
+  //       summary: 'Update a timesheet day',
+  //       value: {
+  //         date_type: 'sick',
+  //         working_hour: 0
+  //       }
+  //     }
+  //   }
+  // })
+  // @ApiParam({ name: 'date', example: '2024-01-01', description: 'Date of the timesheet entry to update' })
+  // async updateTimesheetDay(
+  //   @Param('date') date: string,
+  //   @Body() updateData: UpdateTimesheetEntryDto,
+  // ) {
+  //   return this.timesheetService.updateTimesheetDay(date, updateData);
+  // }
 
   @Put('/bulk-update')
   @ApiOperation({ summary: 'Bulk update multiple timesheet days' })
