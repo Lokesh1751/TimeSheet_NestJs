@@ -79,12 +79,16 @@ export class TimesheetService {
       const groupedDays = this.groupDaysByMonth(timesheet.days);
 
       return {
-        id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
-        year: timesheet.year,
-        total_vacation_leaves: totalVacation,
-        total_sick_leaves: totalSick,
-        total_working_hours: totalWorkingHours,
-        days: groupedDays,
+        statusCode: HttpStatus.OK,
+        message: 'Timesheet fetched successfully',
+        data: {
+          id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
+          year: timesheet.year,
+          total_vacation_leaves: totalVacation,
+          total_sick_leaves: totalSick,
+          total_working_hours: totalWorkingHours,
+          days: groupedDays,
+        },
       };
     });
   }
@@ -244,12 +248,16 @@ export class TimesheetService {
     const groupedDays = this.groupDaysByMonth(timesheet.days);
 
     return {
-      id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
-      year: timesheet.year,
-      total_vacation_leaves: totalVacation,
-      total_sick_leaves: totalSick,
-      total_working_hours: totalWorkingHours,
-      days: groupedDays,
+      statusCode: HttpStatus.OK,
+      message: `Timesheet for year ${year} fetched successfully`,
+      data: {
+        id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
+        year: timesheet.year,
+        total_vacation_leaves: totalVacation,
+        total_sick_leaves: totalSick,
+        total_working_hours: totalWorkingHours,
+        days: groupedDays,
+      },
     };
   }
 }
