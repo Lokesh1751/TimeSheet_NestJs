@@ -70,18 +70,67 @@ export class TimesheetService {
       relations: ['days'],
     });
 
-    if (!timesheets.length) {
-      throw new HttpException(
-        { statusCode: HttpStatus.NOT_FOUND, message: 'No timesheets found' },
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    return timesheets.map(timesheet => {
+      const totalVacation = timesheet.total_vacation_leaves;
+      const totalSick = timesheet.total_sick_leaves;
+      const totalWorkingHours = this.calculateTotalWorkingHours(timesheet.days);
+      
+      // Group days by month
+      const groupedDays = this.groupDaysByMonth(timesheet.days);
 
-    return {
-      statusCode: HttpStatus.OK,
-      message: 'Timesheets retrieved successfully',
-      data: timesheets,
-    };
+      return {
+        id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
+        year: timesheet.year,
+        total_vacation_leaves: totalVacation,
+        total_sick_leaves: totalSick,
+        total_working_hours: totalWorkingHours,
+        days: groupedDays,
+      };
+    });
+  }
+
+  private groupDaysByMonth(days: TimesheetDay[]) {
+    const months = {};
+
+    days.forEach(day => {
+      const month = new Date(day.date).toLocaleString('default', { month: 'long' });
+      if (!months[month]) {
+        months[month] = {
+          total_vacation_leaves: 0,
+          total_sick_leaves: 0,
+          total_working_hours: 0,
+          days: [],
+        };
+      }
+
+      // Increment totals based on the day type
+      if (day.date_type === 'working') {
+        months[month].total_working_hours += day.working_hour;
+      } else if (day.date_type === 'vacation') {
+        months[month].total_vacation_leaves++;
+      } else if (day.date_type === 'sick') {
+        months[month].total_sick_leaves++;
+      }
+
+      // Add the day to the corresponding month
+      months[month].days.push({
+        id: day.id, // Assuming you have an ID field in your TimesheetDay entity
+        date: day.date,
+        date_type: day.date_type,
+        working_hour: day.working_hour,
+      });
+    });
+
+    return months;
+  }
+
+  private calculateTotalWorkingHours(days: TimesheetDay[]) {
+    return days.reduce((total, day) => {
+      if (day.date_type === 'working') {
+        return total + day.working_hour;
+      }
+      return total;
+    }, 0);
   }
 
   async updateTimesheetDay(date: string, updateData: { date: string; date_type?: string; working_hour?: number }) {
