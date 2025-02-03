@@ -225,4 +225,31 @@ export class TimesheetService {
       updatedEntries: updatedDays.length,
     };
   }
+
+  async getTimesheetByYear(year: number) {
+    const timesheet = await this.timesheetRepo.findOne({
+      where: { year },
+      relations: ['days'],
+    });
+
+    if (!timesheet) {
+      throw new NotFoundException(`Timesheet for year ${year} not found`);
+    }
+
+    const totalVacation = timesheet.total_vacation_leaves;
+    const totalSick = timesheet.total_sick_leaves;
+    const totalWorkingHours = this.calculateTotalWorkingHours(timesheet.days);
+    
+    // Group days by month
+    const groupedDays = this.groupDaysByMonth(timesheet.days);
+
+    return {
+      id: timesheet.id, // Assuming you have an ID field in your Timesheet entity
+      year: timesheet.year,
+      total_vacation_leaves: totalVacation,
+      total_sick_leaves: totalSick,
+      total_working_hours: totalWorkingHours,
+      days: groupedDays,
+    };
+  }
 }

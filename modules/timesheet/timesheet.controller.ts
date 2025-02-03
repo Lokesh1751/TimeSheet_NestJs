@@ -47,6 +47,15 @@ export class TimesheetController {
     return this.timesheetService.getAllTimesheets();
   }
 
+  @Get(':year')
+  @ApiOperation({ summary: 'Get timesheet for a specific year' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Timesheet for the specified year retrieved successfully' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Timesheet for the specified year not found' })
+  @ApiParam({ name: 'year', example: '2024', description: 'Year of the timesheet to retrieve' })
+  async getTimesheetByYear(@Param('year') year: number) {
+    return this.timesheetService.getTimesheetByYear(year);
+  }
+
   @Put('/day/:date')
   @ApiOperation({ summary: 'Update a specific timesheet day' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Timesheet day updated successfully' })
